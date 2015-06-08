@@ -6,47 +6,119 @@
 #include <editline/readline.h>
 #include <histedit.h>
 
+/* Lispy Value */
 
-long eval_op(char* op, long x, long y) {
-  if(strcmp(op, "%") == 0) { return x % y;    }
-  if(strcmp(op, "^") == 0) { return pow(x,y); }
-  if(strcmp(op, "+") == 0) { return x + y;    }
-  if(strcmp(op, "-") == 0) { return x - y;    }
-  if(strcmp(op, "*") == 0) { return x * y;    }
-  if(strcmp(op, "/") == 0) { return x / y;    }
+/* Value types */
+enum { LVAL_NUM, LVAL_ERR };
+
+/* Error types */
+enum { LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_UOP, LERR_BAD_NUM };
+typedef struct {
+  int type;
+  long num;
+  int err;
+} lval;
+
+/* Helper functions */
+
+lval lval_num(long x){
+  lval v;
+  v.type = LVAL_NUM;
+  v.num = x;
+  return v;
+}
+
+lval lval_err(int err){
+  lval v;
+  v.type = LVAL_ERR;
+  v.err = err;
+  return v;
+}
+
+/* Print Lisp Val */
+void lval_print(lval v){
+  switch(v.type) {
+    case LVAL_NUM: printf("%ld", v.num); break;
+    case LVAL_ERR:
+      /* Check error type and print the message */
+      if (v.err == LERR_DIV_ZERO) {
+        printf("Error: Division by zero!");
+      }
+      if (v.err == LERR_BAD_OP) {
+        printf("Error: Invalid operator!");
+      }
+      if (v.err == LERR_BAD_UOP) {
+        printf("Error: Invalid unary operator!");
+      }
+      if (v.err == LERR_BAD_NUM) {
+        printf("Error: Invalid Number!");
+      }
+    break;
+  }
+}
+
+void lval_println(lval v) {
+  lval_print(v);
+  putchar('\n');
+}
+
+/* Evaluation */
+
+lval eval_op(char* op, lval x, lval y) {
+  /* Propagate Errors */
+  if(x.type == LVAL_ERR) return x;
+  if(y.type == LVAL_ERR) return y;
+
+  if(strcmp(op, "%") == 0) { return lval_num(x.num % y.num);    }
+  if(strcmp(op, "^") == 0) { return lval_num(pow(x.num,y.num)); }
+  if(strcmp(op, "+") == 0) { return lval_num(x.num + y.num);    }
+  if(strcmp(op, "-") == 0) { return lval_num(x.num - y.num);    }
+  if(strcmp(op, "*") == 0) { return lval_num(x.num * y.num);    }
+  if(strcmp(op, "/") == 0) {
+    if(y.num == 0) return lval_err(LERR_DIV_ZERO);
+    return lval_num(x.num / y.num);
+  }
+
   /* Todo: Move functions to a separate evaluation */
   if(strcmp(op, "min") == 0) {
-    if(x > y) { return y; }
+    if(x.num > y.num) { return y; }
     return x;
   }
   if(strcmp(op, "max") == 0) {
-    if(x > y) { return x; }
+    if(x.num > y.num) { return x; }
     return y;
   }
-  return 0;
+  return lval_err(LERR_BAD_OP);
 }
 
-long eval_unary_op(char* op, long x){
-  if(strcmp(op, "-") == 0) { return x * -1; }
+lval eval_unary_op(char* op, lval x){
+  /* Propagate Errors */
+  if(x.type == LVAL_ERR) return x;
+
+  if(strcmp(op, "-") == 0) { return lval_num(x.num * -1); }
   if(strcmp(op, "+") == 0) { return x; }
-  return 0;
+  return lval_err(LERR_BAD_UOP);
 }
 
-long eval(mpc_ast_t* t){
+lval eval(mpc_ast_t* t){
   if(strstr(t->tag,"number")){
-    return atoi(t->contents);
+    errno = 0;
+    long x = strtol(t->contents, NULL, 10);
+    if(errno == ERANGE) return lval_err(LERR_BAD_NUM);
+    return lval_num(x);
   }
 
   /* Operator is always the second (in expr and in lispy) */
   char* op = t->children[1]->contents;
 
   /* Evaluate and store the second children */
-  long x = eval(t->children[2]);
+  lval x = eval(t->children[2]);
 
   int i = 3;
 
   while(strstr(t->children[i]->tag,"expr")){
-    x = eval_op(op, x, eval(t->children[i]));
+    lval y = eval(t->children[i]);
+    x = eval_op(op, x, y);
     i++;
   }
 
@@ -97,7 +169,7 @@ int main(int argc, char** argv){
     /* Try to parse stuff and print out the AST. Otherwise print the error */
     mpc_result_t r;
     if(mpc_parse("<stdin>", input, Lispy, &r)){
-      printf("%ld\n",eval(r.output));
+      lval_println(eval(r.output));
       mpc_ast_delete(r.output);
     } else {
       mpc_err_print(r.error);
