@@ -1,16 +1,11 @@
-#include "lispy.h"
-
+#include "lang.h"
 #include <stdio.h>
 #include <stdlib.h>
 
 #include <editline/readline.h>
 #include <histedit.h>
 
-/* Parsing Stuff */
 int main(int argc, char** argv){
-  puts("Lispy Version 0.0.1");
-  puts("Press Ctrl+c to Exit\n");
-
   while(1) {
     /* Prompt and readline */
     char* input = readline("lispy> ");
@@ -27,7 +22,7 @@ int main(int argc, char** argv){
     /* Try to parse stuff and print out the AST. Otherwise print the error */
     mpc_result_t r;
     if(lispy_parse("<stdin>", input, &r)){
-      lval_println(eval(r.output));
+      mpc_ast_print(r.output);
       mpc_ast_delete(r.output);
     } else {
       mpc_err_print(r.error);
@@ -36,6 +31,5 @@ int main(int argc, char** argv){
 
     free(input);
   }
-
   return 0;
 }
